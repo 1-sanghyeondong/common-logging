@@ -1,10 +1,5 @@
 rootProject.name = "common-logging"
 
-include(
-    ":common-api",
-    "internal-api",
-)
-
 pluginManagement {
     val kotlinVersion: String by settings
     val springBootVersion: String by settings
