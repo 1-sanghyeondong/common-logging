@@ -1,9 +1,8 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-// 1. 플러그인 정의: subprojects 없이 루트에 바로 적용
 plugins {
     val kotlinVersion = "1.9.23"
-    id("org.springframework.boot") version "3.2.5" // 예시: Java 17 최적화 버전
+    id("org.springframework.boot") version "3.2.5"
     id("io.spring.dependency-management") version "1.1.4"
 
     kotlin("jvm") version kotlinVersion
@@ -12,7 +11,6 @@ plugins {
     kotlin("kapt") version kotlinVersion
 }
 
-// 2. 프로젝트 기본 정보 설정 (gradle.properties 기반 혹은 직접 입력)
 group = project.property("projectGroup").toString()
 version = System.getenv("VERSION") ?: project.property("projectVersion").toString()
 
@@ -40,12 +38,11 @@ dependencyManagement {
 dependencies {
     // 1. Spring Boot Configuration Processor (KAPT 전용으로 설정)
     // 이 부분이 제대로 안 잡히면 @ConfigurationProperties 사용 시 NonExistentClass 에러가 납니다.
-    kapt("org.springframework.boot:spring-boot-dependencies:3.2.5") // BOM 재참조 (필요시)
     kapt("org.springframework.boot:spring-boot-configuration-processor")
 
     // 2. javax.validation -> jakarta.validation 교체
     // 기존의 javax.validation:validation-api 대신 starter-validation을 사용하세요.
-    implementation("org.springframework.boot:spring-boot-starter-validation")
+
 
     // 3. Servlet API (Boot 3.x에서는 Jakarta Servlet 6.0 사용)
     // 기존 javax.servlet-api:3.1.0은 Boot 3.x와 호환되지 않습니다.
@@ -59,7 +56,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
     // Annotation Processors
-    kapt("org.springframework.boot:spring-boot-configuration-processor") // annotationProcessor 대신 kapt 사용 권장
+
 
     // Spring Cloud & Tracing
     implementation("org.springframework.cloud:spring-cloud-starter-config")
