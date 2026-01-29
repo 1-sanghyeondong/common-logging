@@ -3,11 +3,9 @@ import org.gradle.kotlin.dsl.*
 val projectGroup: String by project
 val projectVersion: String by project
 val springBootVersion: String by project
-val springCoreVersion: String by project
 val springCloudConfigVersion: String by project
 val commonIoVersion: String by project
 val springCloudVersion: String by project
-val logbackVersion: String by project
 
 plugins {
     id("org.springframework.boot") apply false
@@ -86,28 +84,29 @@ subprojects {
 
         compileOnly("org.springframework.boot:spring-boot-configuration-processor")
         annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
-        implementation("org.springframework:spring-core:$springCoreVersion")
-        api("org.springframework.boot:spring-boot-starter-parent:$springBootVersion")
 
-        implementation("org.springframework.boot:spring-boot-starter")
+        implementation("org.springframework.boot:spring-boot-starter-web")
+        implementation("org.springframework.boot:spring-boot-starter-aop")
+        implementation("org.springframework.boot:spring-boot-starter-validation")
+
         implementation("org.springframework.cloud:spring-cloud-starter-config")
         implementation("org.springframework.cloud:spring-cloud-starter-sleuth")
+
         implementation("org.apache.commons:commons-lang3")
         implementation("org.apache.commons:commons-pool2")
+        implementation("commons-codec:commons-codec:1.19.0")
         compileOnly("commons-io:commons-io:$commonIoVersion")
 
-        implementation("ch.qos.logback:logback-classic:$logbackVersion")
-        implementation("ch.qos.logback:logback-core:$logbackVersion")
-        implementation("org.slf4j:log4j-over-slf4j:1.7.32")
+        implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
         implementation("net.logstash.logback:logstash-logback-encoder:6.6")
+
+        implementation("javax.servlet:javax.servlet-api:3.1.0")
     }
 
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         kotlinOptions {
             freeCompilerArgs = listOf("-Xjsr305=strict")
             jvmTarget = "17"
-            languageVersion = "1.6"
-            apiVersion = "1.6"
         }
     }
 }
