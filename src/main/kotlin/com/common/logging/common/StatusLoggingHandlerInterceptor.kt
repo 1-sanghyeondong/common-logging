@@ -8,6 +8,7 @@ import com.common.logging.annotations.IgnoreStatusLogging
 import com.common.logging.annotations.StatusLoggerOption
 import com.common.logging.common.domain.AttributeKeys
 import com.common.logging.common.domain.StatusAttributeKeys
+import com.common.logging.common.utils.JsonMaskUtils
 import com.common.logging.common.utils.LogObjectMapper
 import com.common.logging.status.StatusLogger
 import com.common.logging.status.builder.StatusLogMessageBuilder
@@ -28,8 +29,6 @@ import org.springframework.web.util.ContentCachingResponseWrapper
 
 const val SWAGGER_ENDPOINT = "swagger"
 const val SWAGGER_V2_ENDPOINT = "/v2/api-docs"
-
-const val ERROR_DATA_RESPONSE_KEY = "errorData"
 
 @SuppressWarnings("deprecated")
 class StatusLoggingHandlerInterceptor(
@@ -126,9 +125,9 @@ class StatusLoggingHandlerInterceptor(
         return if (requestString.trim().isNotEmpty()) {
             if (request.contentType == APPLICATION_JSON_VALUE) {
                 try {
-                    LogObjectMapper.fullBodyMapper
-                        .readTree(requestString)
-                        .toPrettyString()
+                    val tree = LogObjectMapper.fullBodyMapper.readTree(requestString)
+                    JsonMaskUtils.mask(tree)  // 요청 body 개인정보 마스킹
+                    tree.toPrettyString()
                 } catch (ex: Exception) {
                     logger.error("request logging parse error | request: {}, error_message: {}", requestString, ex.message, ex)
                     throw ex
@@ -180,7 +179,7 @@ class StatusLoggingHandlerInterceptor(
             if (request.contentType == APPLICATION_JSON_VALUE) {
                 try {
                     val root: JsonNode = LogObjectMapper.mapper.readTree(responseString)
-                    errorDataMasking(root)
+                    JsonMaskUtils.mask(root)  // 에러 응답 JSON 트리 전체 마스킹
                     return root.toPrettyString()
                 } catch (ex: Exception) {
                     logger.error("response logging parse error | request: {}, error_message: {}", responseString, ex.message, ex)
@@ -191,16 +190,6 @@ class StatusLoggingHandlerInterceptor(
             }
         } else {
             null
-        }
-    }
-
-    private fun errorDataMasking(root: JsonNode) {
-        if (root is ObjectNode) {
-            root.get(ERROR_DATA_RESPONSE_KEY).let { errorDataNode ->
-                if (errorDataNode is ObjectNode) {
-                    errorDataNode.fieldNames()
-                }
-            }
         }
     }
 }

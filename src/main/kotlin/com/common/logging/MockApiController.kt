@@ -1,6 +1,8 @@
 package com.common.logging
 
 import com.common.logging.annotations.IgnoreStatusLogging
+import com.common.logging.annotations.Mask
+import com.common.logging.annotations.MaskType
 import com.common.logging.annotations.StatusLoggerOption
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -190,8 +192,37 @@ class MockApiController {
     }
 
     // ──────────────────────────────────────────────────────────────
+    // 13. @Mask — 개인정보 마스킹 확인
+    // ──────────────────────────────────────────────────────────────
+
+    @GetMapping("/personal-info")
+    fun getPersonalInfo(): ResponseEntity<PersonalInfoResponse> {
+        val response = PersonalInfoResponse(
+            userId   = 1L,
+            name     = "홍길동",
+            phone    = "010-1234-5678",
+            email    = "hong@example.com",
+            ssn      = "900101-1234567",
+            cardNumber = "1234-5678-9012-3456",
+            address  = "서울특별시 강남구 역삼동 123-45"
+        )
+        return ResponseEntity.ok(response)
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // DTOs
     // ──────────────────────────────────────────────────────────────
+
+    /** 로그에는 마스킹된 값이 기록된다. API 응답은 원본 값 그대로 반환한다. */
+    data class PersonalInfoResponse(
+        val userId: Long,
+        @param:Mask(type = MaskType.NAME) val name: String,               // 홍길동 → 홍**
+        @param:Mask(type = MaskType.PHONE)       val phone: String,       // 010-1234-5678 → 010-****-5678
+        @param:Mask(type = MaskType.EMAIL)       val email: String,       // hong@example.com → hon***@example.com
+        @param:Mask(type = MaskType.SSN)         val ssn: String,         // 900101-1234567 → 900101-*******
+        @param:Mask(type = MaskType.CARD_NUMBER) val cardNumber: String,  // 1234-5678-9012-3456 → 1234-****-****-3456
+        @param:Mask(type = MaskType.ADDRESS)     val address: String,     // 시/구까지만 노출
+    )
 
     data class UserResponse(
         val id: Long,
