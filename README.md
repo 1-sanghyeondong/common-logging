@@ -167,3 +167,104 @@ data class UserResponse(
 | `clientIp` | 클라이언트 IP | 마스킹 가능 (`MaskType.IP`) |
 | `node` / `pod` | K8s 인프라 정보 | 환경 변수 기반 |
 | `traceId` / `spanId` | 분산 추적 ID | Micrometer Tracing 연동 |
+
+---
+
+## 📐 아키텍처 다이어그램
+
+### 1. HTTP 요청 처리 및 로깅 흐름
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant Filter      as ContentCachingWrappingFilter
+    participant Aspect      as RequestMappingAspect (AOP)
+    participant Handler     as Controller
+    participant Interceptor as StatusLoggingHandlerInterceptor
+    participant Logger      as STATUS_LOGGER
+
+    Client->>Filter: HTTP Request
+    Filter->>Filter: Request/Response body 캐싱 래핑
+
+    Filter->>Aspect: preHandle (AOP Around 시작)
+    Aspect->>Handler: 컨트롤러 메서드 호출
+    Handler-->>Aspect: 응답 객체 반환
+    Aspect->>Aspect: 요청·응답 직렬화
+    Note over Aspect: @Mask 필드 → MaskingSerializer 적용
+    Aspect->>Aspect: request attribute 에 로그 데이터 저장
+    Aspect-->>Filter: 응답 반환
+
+    Filter->>Interceptor: afterCompletion()
+    Interceptor->>Interceptor: @IgnoreStatusLogging 체크
+
+    alt 로깅 제외 (@IgnoreStatusLogging)
+        Interceptor-->>Filter: 로깅 스킵
+    else 에러 응답 (4xx / 5xx)
+        Interceptor->>Interceptor: contentAsByteArray Fallback
+        Interceptor->>Interceptor: JsonMaskUtils 재귀 마스킹
+        Interceptor->>Logger: StatusLogger.log()
+    else 정상 응답
+        Interceptor->>Interceptor: request attribute 에서 로그 데이터 수집
+        Interceptor->>Logger: StatusLogger.log()
+    end
+
+    Logger-->>Logger: JSON 직렬화 후 INFO 출력
+    Filter-->>Client: HTTP Response (원본 값 그대로)
+```
+
+---
+
+### 2. @Mask 마스킹 처리 분기
+
+```mermaid
+stateDiagram-v2
+    [*] --> 요청수신
+
+    state "정상 응답 경로 (AOP)" as NormalPath {
+        [*] --> Mask어노테이션확인
+        Mask어노테이션확인 --> MaskingSerializer적용 : @Mask 선언된 필드
+        Mask어노테이션확인 --> 원본값유지 : @Mask 없는 필드
+        MaskingSerializer적용 --> [*]
+        원본값유지 --> [*]
+    }
+
+    state "에러 / Failover 경로 (Interceptor)" as ErrorPath {
+        [*] --> JsonMaskUtils순회
+        JsonMaskUtils순회 --> 필드명인덱스매칭
+        필드명인덱스매칭 --> 마스킹적용 : fieldNameIndex 존재
+        필드명인덱스매칭 --> 원본유지 : fieldNameIndex 없음
+        마스킹적용 --> [*]
+        원본유지 --> [*]
+    }
+
+    요청수신 --> NormalPath : AOP 응답 객체 캡처
+    요청수신 --> ErrorPath : 에러 응답 / failover JSON
+    NormalPath --> STATUS_LOGGER출력
+    ErrorPath --> STATUS_LOGGER출력
+    STATUS_LOGGER출력 --> [*]
+```
+
+---
+
+### 3. RequestBody 캡처 경로 (정상 vs Failover)
+
+```mermaid
+flowchart TD
+    A([HTTP 요청]) --> B["ContentCachingWrappingFilter\n요청 본문 캐싱"]
+    B --> C{"AOP 파라미터\n직렬화 성공?"}
+
+    C -- "성공 (Normal Path)" --> D["RequestMappingAspect\n파라미터 → ObjectNode 변환"]
+    D --> E["@Mask 필드\nMaskingSerializer 적용"]
+    E --> F["request attribute 저장\n(KEY_REQUEST_MAPPING_ARGUMENTS)"]
+
+    C -- "실패 (Failover Path)" --> G["StatusLoggingHandlerInterceptor\ncontentAsByteArray Fallback"]
+    G --> H["JSON 파싱\n(LogObjectMapper)"]
+    H --> I["JsonMaskUtils.mask()\n필드명 기반 재귀 마스킹"]
+    I --> J["request attribute 저장\n(KEY_REQUEST_MAPPING_ARGUMENTS_STRING)"]
+
+    F --> K["StatusLoggingHandlerInterceptor\nafterCompletion 수집"]
+    J --> K
+    K --> L["StatusLogger.log()\nJSON INFO 출력"]
+    L --> M([STATUS_LOGGER 기록 완료])
+```
