@@ -119,7 +119,7 @@ class CommonStatusLogMessageBuilder(
             requestFrom = requestFrom,
             time = currentTimestamp,
             path = path,
-            ipath = ipath,
+            iPath = ipath,
             appReferer = appReferer,
             method = servletRequest.method,
             execTimemillis = execTimeInMillis,
@@ -224,7 +224,6 @@ class CommonStatusLogMessageBuilder(
     }
 
     private fun buildUserData(request: HttpServletRequest): User {
-        // Set data from headers
         return User(
             id =
                 request.getLongAttribute(StatusAttributeKeys.USER_ID) ?: run {

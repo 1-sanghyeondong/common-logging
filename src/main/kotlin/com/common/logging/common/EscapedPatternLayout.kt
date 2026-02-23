@@ -48,7 +48,7 @@ class EscapedPatternLayout : PatternLayout() {
         fun jsonSafeReplace(origin: String?): String = StringEscapeUtils.escapeJson(origin)
 
         /**
-         * sonSafeReplace 에서 "/" 문자를 치환하는 부분을 제거하기 위해서 정의함.
+         * sonSafeReplace 에서 "/" 문자를 치환하는 부분을 제거하기 위해서 정의
          */
         fun customJsonSafeReplace(origin: String?): String {
             var message = StringUtils.replace(origin, "\t", "\\t")

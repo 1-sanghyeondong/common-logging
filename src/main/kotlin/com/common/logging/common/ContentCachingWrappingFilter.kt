@@ -14,24 +14,21 @@ import org.springframework.web.util.ContentCachingResponseWrapper
 import org.springframework.web.util.pattern.PathPattern
 import java.io.IOException
 
+const val HEALTH_ENDPOINT = "/health"
+
 @Order(Ordered.HIGHEST_PRECEDENCE + 1)
 class ContentCachingWrappingFilter(
     private val enableContentCaching: Boolean,
     private val ignorePathPatterns: List<PathPattern>
 ) : OncePerRequestFilter() {
     @Throws(ServletException::class, IOException::class)
-    override fun doFilterInternal(
-        request: HttpServletRequest,
-        response: HttpServletResponse,
-        chain: FilterChain
-    ) {
+    override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {
         if (LoggingFilterIgnoreUrl.contains(request.requestURI) || enableContentCaching.not() || isIgnoredPathPatterns(request)) {
             chain.doFilter(request, response)
         } else {
-            val wrappingRequest = ContentCachingRequestWrapper(request)
             val wrappingResponse = ContentCachingResponseWrapper(response)
             try {
-                chain.doFilter(wrappingRequest, wrappingResponse)
+                chain.doFilter(ContentCachingRequestWrapper(request), wrappingResponse)
             } finally {
                 wrappingResponse.copyBodyToResponse()
             }
@@ -43,6 +40,6 @@ class ContentCachingWrappingFilter(
             return false
         }
 
-        return ignorePathPatterns.any { it.matches(PathContainer.parsePath("/health")) }
+        return ignorePathPatterns.any { it.matches(PathContainer.parsePath(HEALTH_ENDPOINT)) }
     }
 }

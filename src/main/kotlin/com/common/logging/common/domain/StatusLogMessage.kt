@@ -11,7 +11,7 @@ data class StatusLogMessage(
     val requestFrom: String,
     val time: String,
     val path: String,
-    val ipath: String,
+    val iPath: String,
     val method: String,
     val appReferer: String,
     val execTimemillis: Long,

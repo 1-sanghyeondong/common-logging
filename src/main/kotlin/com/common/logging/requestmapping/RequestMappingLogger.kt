@@ -108,8 +108,8 @@ class RequestMappingLogger(
                 )
 
             setArgumentsToRequestAttribute(request, requestLog)
-        } catch (e: Exception) {
-            logger.warn("Exception on logRequest", e)
+        } catch (ex: Exception) {
+            logger.warn("exception on log request | message: {}", ex.message, ex)
         }
     }
 
@@ -122,7 +122,7 @@ class RequestMappingLogger(
 
         val nameLength = names.size
         val valueLength = args.size
-        require(nameLength == valueLength) { "names and values length must be same~!" }
+        require(nameLength == valueLength) { "names and values length must be same" }
         val methodArguments = arrayOfNulls<MethodArgument>(names.size)
 
         for (i in methodArguments.indices) {
@@ -171,8 +171,8 @@ class RequestMappingLogger(
             request.setAttribute(AttributeKeys.KEY_REQUEST_MAPPING_RESPONSE_MSG, responseMsg)
             request.setAttribute(AttributeKeys.KEY_REQUEST_MAPPING_RESPONSE_EXCEPTION, exception)
             request.setAttribute(AttributeKeys.KEY_REQUEST_MAPPING_DEPRECATED, isDeprecated(joinPoint))
-        } catch (e: Exception) {
-            logger.warn("Exception on logResponse", e)
+        } catch (ex: Exception) {
+            logger.warn("exception on log response | message: {}", ex.message, ex)
         }
     }
 
@@ -222,8 +222,8 @@ class RequestMappingLogger(
     private fun toJsonString(baseLog: Any): String =
         try {
             LogObjectMapper.mapper.writeValueAsString(baseLog)
-        } catch (e: JsonProcessingException) {
-            logger.warn("BaseLog.toJsonString fail.", e)
+        } catch (ex: JsonProcessingException) {
+            logger.warn("baseLog writeValueAsString failed | message: {}", ex.message, ex)
             ""
         }
 
@@ -237,8 +237,8 @@ class RequestMappingLogger(
             } else {
                 jsonString
             }
-        } catch (e: Exception) {
-            logger.warn("BaseLog.toJsonString abbreviate fail.", e)
+        } catch (ex: Exception) {
+            logger.warn("BaseLog.toJsonString abbreviate failed | message: {}", ex.message, ex)
             ""
         }
 }

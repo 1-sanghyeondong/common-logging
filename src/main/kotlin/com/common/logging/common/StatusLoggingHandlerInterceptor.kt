@@ -1,6 +1,6 @@
 package com.common.logging.common
 
-import com.common.logging.annotations.IgnoreProm
+import com.common.logging.annotations.IgnorePrometheus
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -25,6 +25,11 @@ import org.springframework.web.servlet.HandlerInterceptor
 import org.springframework.web.servlet.HandlerMapping
 import org.springframework.web.util.ContentCachingRequestWrapper
 import org.springframework.web.util.ContentCachingResponseWrapper
+
+const val SWAGGER_ENDPOINT = "swagger"
+const val SWAGGER_V2_ENDPOINT = "/v2/api-docs"
+
+const val ERROR_DATA_RESPONSE_KEY = "errorData"
 
 @SuppressWarnings("deprecated")
 class StatusLoggingHandlerInterceptor(
@@ -63,9 +68,7 @@ class StatusLoggingHandlerInterceptor(
             return
         }
 
-        if (request.requestURI.contains("swagger") ||
-            request.requestURI.contains("/v2/api-docs")
-        ) {
+        if (request.requestURI.contains(SWAGGER_ENDPOINT) || request.requestURI.contains(SWAGGER_V2_ENDPOINT)) {
             return
         }
 
@@ -96,11 +99,11 @@ class StatusLoggingHandlerInterceptor(
         }
         return (
             handler.getMethodAnnotation(IgnoreStatusLogging::class.java) != null ||
-                handler.getMethodAnnotation(IgnoreProm::class.java) != null
+                handler.getMethodAnnotation(IgnorePrometheus::class.java) != null
         )
     }
 
-    // Aspect-Around 에서 로깅 실패시, Servlet Request, Response 에서 꺼내서 로깅
+    // aspect-around 에서 로깅 실패시 servlet request, response 에서 꺼내서 로깅
     private fun setFailoverRequestResponseLog(
         request: HttpServletRequest,
         response: HttpServletResponse
@@ -126,9 +129,9 @@ class StatusLoggingHandlerInterceptor(
                     LogObjectMapper.fullBodyMapper
                         .readTree(requestString)
                         .toPrettyString()
-                } catch (e: Exception) {
-                    logger.error("RequestLogging Parse Error : $requestString", e)
-                    throw e
+                } catch (ex: Exception) {
+                    logger.error("request logging parse error | request: {}, error_message: {}", requestString, ex.message, ex)
+                    throw ex
                 }
             } else {
                 requestString
@@ -163,8 +166,8 @@ class StatusLoggingHandlerInterceptor(
             } else {
                 null
             }
-        } catch (e: Exception) {
-            logger.warn("Status Logging - UNKNOWN RESPONSE type", e)
+        } catch (ex: Exception) {
+            logger.warn("status logging 'UNKNOWN RESPONSE' type | error_message: {}", ex.message, ex)
             null
         }
 
@@ -179,9 +182,9 @@ class StatusLoggingHandlerInterceptor(
                     val root: JsonNode = LogObjectMapper.mapper.readTree(responseString)
                     errorDataMasking(root)
                     return root.toPrettyString()
-                } catch (e: Exception) {
-                    logger.error("ResponseLogging Parse Error : $responseString", e)
-                    throw e
+                } catch (ex: Exception) {
+                    logger.error("response logging parse error | request: {}, error_message: {}", responseString, ex.message, ex)
+                    throw ex
                 }
             } else {
                 responseString
@@ -193,7 +196,7 @@ class StatusLoggingHandlerInterceptor(
 
     private fun errorDataMasking(root: JsonNode) {
         if (root is ObjectNode) {
-            root.get("errorData").let { errorDataNode ->
+            root.get(ERROR_DATA_RESPONSE_KEY).let { errorDataNode ->
                 if (errorDataNode is ObjectNode) {
                     errorDataNode.fieldNames()
                 }

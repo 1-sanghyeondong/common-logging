@@ -9,9 +9,6 @@ plugins {
     kotlin("plugin.spring") version kotlinVersion
     kotlin("plugin.jpa") version kotlinVersion
     kotlin("kapt") version kotlinVersion
-
-//    `maven-publish`
-//    signing
 }
 
 group = project.property("projectGroup").toString()
@@ -66,7 +63,6 @@ kapt {
     showProcessorStats = true
 }
 
-// 5. 컴파일 옵션 설정
 tasks.withType<KotlinCompile> {
     kotlinOptions {
         freeCompilerArgs = listOf("-Xjsr305=strict")
@@ -77,49 +73,3 @@ tasks.withType<KotlinCompile> {
 tasks.withType<Test> {
     useJUnitPlatform()
 }
-
-//publishing {
-//    publications {
-//        create<MavenPublication>("mavenJava") {
-//            from(components["java"])
-//
-//            groupId = project.group.toString()
-//            artifactId = project.name
-//            version = project.version.toString()
-//
-//            pom {
-//                name.set("Common Logging Library")
-//                description.set("Common logging utilities for internal services")
-//            }
-//        }
-//    }
-//
-//    repositories {
-//        maven {
-//            name = "Nexus"
-//            val releasesRepoUrl = uri("https://your-nexus-url/repository/maven-releases/")
-//            val snapshotsRepoUrl = uri("https://your-nexus-url/repository/maven-snapshots/")
-//            url = if (version.toString().endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
-//
-//            credentials {
-//                username = project.findProperty("nexusUsername")?.toString() ?: System.getenv("NEXUS_USERNAME")
-//                password = project.findProperty("nexusPassword")?.toString() ?: System.getenv("NEXUS_PASSWORD")
-//            }
-//        }
-//    }
-//}
-//
-//signing {
-//    val signingKey = project.findProperty("signingKey")?.toString() ?: System.getenv("GPG_SIGNING_KEY")
-//    val signingPassword = project.findProperty("signingPassword")?.toString() ?: System.getenv("GPG_PASSPHRASE")
-//
-//    if (signingKey != null && signingPassword != null) {
-//        useInMemoryPgpKeys(signingKey, signingPassword)
-//        sign(publishing.publications["mavenJava"])
-//    }
-//}
-//
-//java {
-//    withSourcesJar()
-//    withJavadocJar()
-//}

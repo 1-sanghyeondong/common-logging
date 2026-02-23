@@ -3,9 +3,13 @@
 build
 out
 *.bin
+.idea
 /.idea/
 /.settings/
 /target/
 /.classpath
 /.project
 /*.iml
+.gradle
+.gradle/buildOutputCleanup
+.gradle/7.3/**

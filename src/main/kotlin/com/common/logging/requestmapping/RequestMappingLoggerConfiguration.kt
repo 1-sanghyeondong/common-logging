@@ -32,8 +32,8 @@ class RequestMappingLoggerConfiguration(
                 if (clazzString != "") {
                     excludedClassesSet.add(Class.forName(clazzString))
                 }
-            } catch (e: ClassNotFoundException) {
-                logger.warn("$clazzString does not exist", e)
+            } catch (ex: ClassNotFoundException) {
+                logger.warn("$clazzString does not exist | message: {}", ex.message, ex)
             }
         }
 

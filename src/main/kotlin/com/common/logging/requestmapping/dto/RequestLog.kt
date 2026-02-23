@@ -39,8 +39,8 @@ internal data class RequestLog(
                             JsonNode::class.java
                         )
                     arguments.set<JsonNode>(name, jsonNode)
-                } catch (e: Exception) {
-                    logger.warn("RequestLog arguments convert fail.", e)
+                } catch (ex: Exception) {
+                    logger.warn("request log arguments convert failed | message: {}", ex.message, ex)
                 }
             }
 

@@ -33,7 +33,7 @@ object StatusLogger {
         }
 
         statusLog["statusCode"] = status.response.httpStatusCode
-        statusLog["ipath"] = status.ipath
+        statusLog["ipath"] = status.iPath
         statusLog["path"] = status.path
         statusLog["method"] = status.method
         statusLog["requestBody"] = status.requestBody ?: LoggingUtil.EMPTY_KEY
@@ -80,8 +80,8 @@ object StatusLogger {
         try {
             val logObject: Map<String, Any> = createLogObject(service = service, phase = phase, status = message)
             STATUS_LOGGER.info("{}", objectMapper.writeValueAsString(logObject))
-        } catch (e: JsonProcessingException) {
-            logger.warn("Error while writing status log", e)
+        } catch (ex: JsonProcessingException) {
+            logger.warn("error while writing status log | message: {}", ex.message, ex)
         }
     }
 

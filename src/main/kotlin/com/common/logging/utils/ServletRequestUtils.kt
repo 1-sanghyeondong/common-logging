@@ -8,23 +8,19 @@ import org.slf4j.LoggerFactory
 object ServletRequestUtils {
     private val log: Logger = LoggerFactory.getLogger(this::class.java)
 
-    fun <T> getAttribute(
-        request: ServletRequest,
-        key: String,
-        defaultValue: T
-    ): T =
+    fun <T> getAttribute(request: ServletRequest, key: String, defaultValue: T): T =
         try {
             val value: T? = request.getAttribute(key) as T
             value ?: defaultValue
-        } catch (e: Exception) {
-            log.warn("Error on get an attribute with key '{}'", key, e)
+        } catch (ex: Exception) {
+            log.warn("error on get an attribute with key: {}, message: {}", key, ex.message, ex)
             defaultValue
         }
 
     fun HttpServletRequest.getLongAttribute(name: String): Long? =
         try {
             (getAttribute(name) as String?)?.toLong()
-        } catch (e: Exception) {
+        } catch (ex: Exception) {
             null
         }
 }

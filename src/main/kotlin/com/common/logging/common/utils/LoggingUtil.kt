@@ -31,7 +31,7 @@ object LoggingUtil {
     const val KEY_REFERER = "referer"
     const val KEY_SIGN_TX_ID = "sign-tx-id"
     const val KEY_PTX_ID = "pinpoint-traceid"
-    const val KEY_MDC_PTX_ID = "PtxId" // pinpoint가 mdc에 넣어주는 pinpoint transaction id의 key
+    const val KEY_MDC_PTX_ID = "PtxId" // pinpoint가 mdc 에 넣어주는 pinpoint transaction id 의 key
 
     const val KEY_OS = "os"
     const val KEY_OS_VER = "os-ver"
@@ -42,10 +42,7 @@ object LoggingUtil {
     private val GZIP_MAGIC: ByteArray = byteArrayOf(0x1f.toByte(), 0x8b.toByte())
 
     /**
-     *
-     * 하루 단위로 고유한(거의?) 로그 번호를 생성한다.
-     *
-     * @return 하루 단위로 고유한(거의?) 로그 번호이다.
+     * 하루 단위로 고유한 로그 번호를 생성
      */
     fun makeUniqueEventId(): String {
         // 1 day = 24 * 60 * 60 * 1,000 milli seconds = 86,400,000 milli seconds
@@ -56,10 +53,7 @@ object LoggingUtil {
     }
 
     /**
-     *
-     * 30년 단위로 고유한(거의?) 로그 번호를 생성한다.
-     *
-     * @return 30년 단위로 고유한(거의?) 로그 번호이다.
+     * 30년 단위로 고유한 로그 번호를 생성
      */
     fun makeUniqueEventIdCandidate(): String {
         // 30years = 30 * 365 * 24 * 60 * 60 * 1,000 milli seconds = 946,080,000,000 milli seconds
@@ -71,10 +65,7 @@ object LoggingUtil {
     }
 
     /**
-     *
-     * DeviceId 공통포맷
-     *
-     * @return 13자리 deviceId
+     * 13자리 deviceId 를 생성
      */
     fun deviceId(deviceId: String?): String? {
         if (deviceId.isNullOrEmpty()) {
@@ -98,8 +89,8 @@ object LoggingUtil {
                     base64Dec
                 }
             mapper.readValue(result.sliceArray(IntRange(0, result.size - 1)), HeaderMapType())
-        } catch (e: Exception) {
-            logger.warn("InternalHeader deserialize Error", e)
+        } catch (ex: Exception) {
+            logger.warn("internal header deserialize error | message: {}", ex.message, ex)
             mapOf()
         }
 
