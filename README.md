@@ -3,7 +3,7 @@
 - **표준화된 로깅 공통화**: HTTP 요청/응답 상태, 페이로드(Body), 클라우드 환경 정보(Pod, Node 등)를 자동으로 수집하여 표준화된 로그를 생성
 - **안전한 아키텍처**: 최신 Spring Boot의 엄격한 빈 생성 규칙을 준수하여 순환 참조 문제를 해결하고 조건부 로딩을 통해 필요한 환경에서만 활성화
 - **주요정보 마스킹**: 모듈 내 @Mask 어노테이션을 활용해서 개인정보 또는 민감정보는 로그에 노출하지 않거나 마스킹되도록 지원
-- **분산 추적**: 스프링 클라우드를 위한 분산 트레이싱에 대한 내용을 자동 제공 (MDC Tracing, traceId/spanId)
+- **분산 추적**: Micrometer Tracing(Brave) 기반으로 traceId/spanId를 MDC에 자동 주입. B3/W3C 헤더 전파 및 자체 UUID fallback 지원
 
 ---
 
@@ -20,8 +20,8 @@ dependencies {
 ### 2. 라이브러리 활성화
 
 ```kotlin
-@EnableLogging // 모든 로깅 기능 활성화
-@EnableMDCTraceLogging // 분산 추적 + Brave 샘플링 활성화
+@EnableLogging          // Status Logging, Masking, Content Caching 등 전체 활성화
+@EnableMDCTraceLogging  // 분산 추적 + Brave 샘플링 활성화 (Optional)
 @SpringBootApplication
 class MyServiceApplication
 
@@ -29,6 +29,15 @@ fun main(args: Array<String>) {
     runApplication<MyServiceApplication>(*args)
 }
 ```
+
+### 3. application.yml 설정
+
+```yaml
+app:
+  id: my-service-name   # [필수] 서비스 식별자 (로그의 service 필드)
+```
+
+> `spring.cloud.config` 비활성화 등 라이브러리 기본 설정은 `CommonLoggingEnvironmentPostProcessor`가 자동으로 처리합니다. 별도 설정 불필요.
 
 ---
 
@@ -38,8 +47,8 @@ fun main(args: Array<String>) {
 
 | 어노테이션 | 적용 위치 | 설명 |
 |---|---|---|
-| `@EnableLogging` | 클래스 | 라이브러리 전체 빈 로드 진입점 |
-| `@EnableMDCTraceLogging` | 클래스 | 라이브러리 전체 빈 로드 진입점 |
+| `@EnableLogging` | 클래스 | STATUS_LOGGER, AOP, 필터 등 라이브러리 전체 빈 로드 |
+| `@EnableMDCTraceLogging` | 클래스 | Brave Sampler(100%) 등록 + MDC traceId/spanId 자동 주입 |
 | `@IgnoreStatusLogging` | 메서드 | 해당 엔드포인트를 STATUS_LOGGER 에서 제외 |
 | `@StatusLoggerOption(fullBody=true)` | 메서드 | responseBody 전체를 로그에 기록 (기본은 truncated) |
 | `@Mask(type = MaskType.PHONE)` | 필드 | 직렬화 시 해당 필드 값을 마스킹 |
@@ -88,7 +97,49 @@ data class UserResponse(
 
 ---
 
-### 3. 로그 메시지 빌더 (StatusLogMessageBuilder)
+### 3. 분산 추적 (MDC Tracing)
+
+`MdcTraceFilter`가 모든 HTTP 요청에 대해 traceId / spanId를 MDC에 주입합니다.
+
+#### 트레이스 헤더 우선순위
+
+```
+W3C traceparent  →  B3 Single (b3)  →  B3 Multi (X-B3-TraceId / X-B3-SpanId)  →  UUID 자동 생성
+```
+
+- 인입 헤더가 있으면 해당 값을 그대로 MDC에 전파
+- Micrometer가 MDC에 이미 주입한 값이 있으면 그대로 사용
+- 아무것도 없으면 UUID 32자리(traceId) + 16자리(spanId)를 자동 생성
+
+#### 커스텀 MDC 헤더
+
+| 요청 헤더 | MDC 키 | 설명 |
+|---|---|---|
+| `X-User-Id` | `user-id` | 사용자 ID (Long 변환 가능 시 request attribute에도 저장) |
+| `X-Device-Id` | `device-id` | 디바이스 ID |
+| `X-Request-From` | `request-from` | 요청 출처 |
+| `X-Request-Id` | `requestId` | 요청 추적 ID (없으면 UUID 자동 생성) |
+
+#### Logback 패턴
+
+```
+%date %-5level %thread (%logger{15}) [%mdc{traceId:--}:%mdc{spanId:--}:%mdc{user-id:--}] [%mdc{requestId:-}] %msg%n
+```
+
+#### 운영 환경 샘플링 조정
+
+`@EnableMDCTraceLogging`은 기본으로 100% 샘플링(ALWAYS_SAMPLE)을 적용합니다. 운영 환경에서 비율을 낮추려면 어노테이션 없이 아래 프로퍼티를 직접 사용하세요.
+
+```yaml
+management:
+  tracing:
+    sampling:
+      probability: 0.1   # 10% 샘플링
+```
+
+---
+
+### 4. 로그 메시지 빌더 (StatusLogMessageBuilder)
 
 `CommonStatusLogMessageBuilder`는 시스템 환경 변수에서 클라우드 인프라 정보를 자동으로 추출합니다.
 
@@ -105,7 +156,7 @@ data class UserResponse(
 
 ---
 
-### 4. HTTP 본문 캐싱 (ContentCachingWrappingFilter)
+### 5. HTTP 본문 캐싱 (ContentCachingWrappingFilter)
 
 `HttpServletRequest` / `HttpServletResponse`를 래핑해 요청·응답 본문을 **여러 번 읽을 수 있도록 캐싱**합니다.
 `ignore-path-patterns` 설정으로 헬스체크 등 불필요한 경로를 제외할 수 있습니다.
@@ -117,8 +168,8 @@ data class UserResponse(
 ```json
 {
   "@timestamp": "2026-01-29T12:15:22.123+09:00",
-  "traceId": "91f10b1e-b1a1-4216-b9fa-428bb119d11f",
-  "spanId": "193269809b80",
+  "traceId": "91f10b1eb1a14216b9fa428bb119d11f",
+  "spanId": "193269809b80ab12",
   "service": "my-service",
   "phase": "production",
   "method": "GET",
@@ -138,25 +189,24 @@ data class UserResponse(
 
 ### 주요 필드 설명
 
-| 필드                  | 설명                   | 비고                      |
-|---------------------|----------------------|-------------------------|
-| `@timestamp`        | 로그 발생 시간             | ISO 8601                |
-| `traceId`           | 분산추적 ID              | 자동 발급                 |
-| `spanId`            | 분산추적 ID              | 자동 발급                   |
-| `service`           | 서비스 식별자              | `app.id` 설정값            |
-| `phase`             | 실행 환경                | `spring.profiles.active` |
-| `method`            | HTTP Method          | GET, POST, PUT 등        |
-| `path`              | 실제 요청 URI            | Query String 포함         |
-| `ipath`             | HandlerMapping 패턴 경로 | `/api/v1/users/{id}` 형태 |
-| `statusCode`        | HTTP 상태 코드           | 200, 400, 500 등         |
-| `execTimemillis`    | 처리 시간                | 밀리초 단위                  |
-| `message`           | 요약 텍스트               | req/res/from 멀티라인       |
-| `requestBody`       | 요청 본문                | AOP 캡처 or Failover 경로   |
-| `responseBody`      | 응답 본문                | `@Mask` 필드 자동 마스킹       |
-| `responseMsg`       | 에러 메시지               | 4xx/5xx 응답 시 포함         |
-| `clientIp`          | 클라이언트 IP             | 마스킹 가능 (`MaskType.IP`)  |
-| `node` / `pod`      | K8s 인프라 정보           | 환경 변수 기반                |
-| `traceId` / `spanId` | 분산 추적 ID             | Micrometer Tracing 연동   |
+| 필드 | 설명 | 비고 |
+|---|---|---|
+| `@timestamp` | 로그 발생 시간 | ISO 8601 |
+| `traceId` | 분산 추적 ID | 헤더 전파 또는 UUID 자동 생성 |
+| `spanId` | 분산 추적 Span ID | 헤더 전파 또는 UUID 자동 생성 |
+| `service` | 서비스 식별자 | `app.id` 설정값 |
+| `phase` | 실행 환경 | `spring.profiles.active` |
+| `method` | HTTP Method | GET, POST, PUT 등 |
+| `path` | 실제 요청 URI | Query String 포함 |
+| `ipath` | HandlerMapping 패턴 경로 | `/api/v1/users/{id}` 형태 |
+| `statusCode` | HTTP 상태 코드 | 200, 400, 500 등 |
+| `execTimemillis` | 처리 시간 | 밀리초 단위 |
+| `message` | 요약 텍스트 | req/res/from 멀티라인 |
+| `requestBody` | 요청 본문 | AOP 캡처 or Failover 경로 |
+| `responseBody` | 응답 본문 | `@Mask` 필드 자동 마스킹 |
+| `responseMsg` | 에러 메시지 | 4xx/5xx 응답 시 포함 |
+| `clientIp` | 클라이언트 IP | 마스킹 가능 (`MaskType.IP`) |
+| `node` / `pod` | K8s 인프라 정보 | 환경 변수 기반 |
 
 ---
 
@@ -168,13 +218,18 @@ data class UserResponse(
 sequenceDiagram
     autonumber
     actor Client
-    participant Filter      as ContentCachingWrappingFilter
-    participant Aspect      as RequestMappingAspect (AOP)
-    participant Handler     as Controller
-    participant Interceptor as StatusLoggingHandlerInterceptor
-    participant Logger      as STATUS_LOGGER
+    participant MDCFilter    as MdcTraceFilter
+    participant Filter       as ContentCachingWrappingFilter
+    participant Aspect       as RequestMappingAspect (AOP)
+    participant Handler      as Controller
+    participant Interceptor  as StatusLoggingHandlerInterceptor
+    participant Logger       as STATUS_LOGGER
 
-    Client->>Filter: HTTP Request
+    Client->>MDCFilter: HTTP Request
+    MDCFilter->>MDCFilter: traceId/spanId MDC 주입 (헤더 or UUID fallback)
+    MDCFilter->>MDCFilter: userId, deviceId, requestId MDC 주입
+    MDCFilter->>Filter: 다음 필터로 전달
+
     Filter->>Filter: Request/Response body 캐싱 래핑
 
     Filter->>Aspect: preHandle (AOP Around 시작)
@@ -200,7 +255,9 @@ sequenceDiagram
     end
 
     Logger-->>Logger: JSON 직렬화 후 INFO 출력
-    Filter-->>Client: HTTP Response (원본 값 그대로)
+    Filter-->>MDCFilter: 응답 반환
+    MDCFilter->>MDCFilter: MDC 키 정리 (finally)
+    MDCFilter-->>Client: HTTP Response (원본 값 그대로)
 ```
 
 ---
