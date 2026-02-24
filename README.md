@@ -37,7 +37,120 @@ app:
   id: my-service-name   # [필수] 서비스 식별자 (로그의 service 필드)
 ```
 
-> `spring.cloud.config` 비활성화 등 라이브러리 기본 설정은 `CommonLoggingEnvironmentPostProcessor`가 자동으로 처리합니다. 별도 설정 불필요.
+> `spring.cloud.config` 비활성화 등 라이브러리 기본 설정은 `CommonLoggingEnvironmentPostProcessor`가 자동으로 처리합니다 (별도 설정 불필요)
+
+---
+
+### 4. logback-spring.xml 설정
+
+라이브러리는 **두 종류**의 로그를 출력합니다
+Appender를 분리하여 각 형태에 맞는 패턴을 지정해주세요
+
+#### 로그 형태 비교
+
+| 구분 | Logger 이름 | 형태 | 설명 |
+|---|---|---|---|
+| **일반 로그** | (root / 각 클래스) | 텍스트 한 줄 | 개발/디버그용 콘솔 출력 |
+| **STATUS 로그** | `STATUS_LOGGER` | **단일 JSON 한 줄** | HTTP 요청·응답 구조화 로그 |
+
+#### 일반 로그 예시 (텍스트)
+
+```
+2026-01-29 12:15:22,123 INFO  http-nio-8080-exec-1 (c.c.l.c.MdcTraceFilter) [91f10b1eb1a14216:193269809b80ab12:1042] [req-uuid-1234] Started request processing
+```
+
+적용 패턴:
+```xml
+<pattern>%date{'yyyy-MM-dd HH:mm:ss,SSS', Asia/Seoul} %-5level %thread (%logger{15}) [%mdc{traceId:--}:%mdc{spanId:--}:%mdc{user-id:--}] [%mdc{requestId:-}] %msg%n</pattern>
+```
+
+#### STATUS 로그 예시 (단일 JSON 한 줄)
+
+```json
+{
+  "@timestamp": "2026-01-29T12:15:22.123+09:00",
+  "traceId": "91f10b1eb1a14216b9fa428bb119d11f",
+  "spanId": "193269809b80ab12",
+  "service": "my-service",
+  "phase": "production",
+  "method": "GET",
+  "path": "/api/v1/users/42",
+  "ipath": "/api/v1/users/{id}",
+  "statusCode": 200,
+  "execTimemillis": 42,
+  "message": "req: GET /api/v1/users/42\nres: 200 42ms\nfrom: 10.0.12.45\n",
+  "requestBody": "{}",
+  "responseBody": "{\"id\":42,\"name\":\"홍**\",\"phone\":\"010-****-5678\"}",
+  "clientIp": "10.0.12.45",
+  "node": "gke-cluster-node-01",
+  "pod": "my-service-7d8f9b",
+  "version": "1.2.0"
+}
+```
+
+> `message` 필드 안의 개행(`\n`) 등 특수문자는 `EscapedPatternLayout`이 JSON-safe하게 자동 이스케이프합니다.
+
+적용 패턴 (`EscapedPatternLayout` + `%metric` 컨버터 사용):
+```xml
+<pattern>{"@timestamp":"%date{yyyy-MM-dd'T'HH:mm:ss.SSSXXX, Asia/Seoul}","level":"%level","thread":"%thread","logger":"%logger{36}","traceId":"%mdc{traceId:-}","spanId":"%mdc{spanId:-}","message":%metric}</pattern>
+```
+
+> **`%metric` 컨버터**: `EscapedPatternLayout` 전용. STATUS_LOGGER가 출력하는 **JSON 문자열을 그대로 삽입**하기 위해 탭·개행·따옴표만 이스케이프합니다 (`customJsonSafeReplace`) `%msg` / `%message` 는 모든 특수문자를 완전 이스케이프하므로 STATUS_LOGGER 에는 사용하지 마세요
+
+#### logback-spring.xml 전체 예시
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!--
+        springProperty 로 application.yml 값을 참조하거나 defaultValue 로 기본값 지정
+        MDC 키: traceId, spanId (MdcTraceFilter), user-id (X-User-Id), requestId (X-Request-Id)
+    -->
+    <springProperty scope="context" name="LOGBACK_STDOUT_PATTERN"
+                    source="logging.patterns.stdout"
+                    defaultValue="%date{'yyyy-MM-dd HH:mm:ss,SSS', Asia/Seoul} %-5level %thread %r \(%logger{15}\) [%mdc{traceId:--}:%mdc{spanId:--}:%mdc{user-id:--}] [%mdc{requestId:-}] %msg%n"/>
+
+    <springProperty scope="context" name="LOGBACK_STATUS_PATTERN"
+                    source="logging.patterns.status"
+                    defaultValue="{&quot;@timestamp&quot;:&quot;%date{yyyy-MM-dd'T'HH:mm:ss.SSSXXX, Asia/Seoul}&quot;,&quot;level&quot;:&quot;%level&quot;,&quot;thread&quot;:&quot;%thread&quot;,&quot;logger&quot;:&quot;%logger{36}&quot;,&quot;traceId&quot;:&quot;%mdc{traceId:-}&quot;,&quot;spanId&quot;:&quot;%mdc{spanId:-}&quot;,&quot;message&quot;:%metric}"/>
+
+    <!-- 일반 콘솔 출력 -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOGBACK_STDOUT_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <!-- STATUS_LOGGER 전용 JSON 출력 (EscapedPatternLayout 필수) -->
+    <appender name="STATUS_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <layout class="com.common.logging.common.EscapedPatternLayout">
+                <pattern>${LOGBACK_STATUS_PATTERN}</pattern>
+            </layout>
+        </encoder>
+    </appender>
+
+    <!-- STATUS_LOGGER: JSON appender만, root로 전파하지 않음 -->
+    <logger name="STATUS_LOGGER" level="INFO" additivity="false">
+        <appender-ref ref="STATUS_JSON"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>
+```
+
+#### MDC 패턴 토큰 레퍼런스
+
+| 토큰 | MDC 키 | 값 출처 |
+|---|---|---|
+| `%mdc{traceId:--}` | `traceId` | W3C / B3 헤더 또는 UUID 자동 생성 |
+| `%mdc{spanId:--}` | `spanId` | W3C / B3 헤더 또는 UUID 자동 생성 |
+| `%mdc{user-id:--}` | `user-id` | `X-User-Id` 요청 헤더 |
+| `%mdc{requestId:-}` | `requestId` | `X-Request-Id` 헤더 또는 UUID 자동 생성 |
+
+> 기본값 구분자: `:-` (빈 문자열 대체) / `:--` (대시(`-`) 대체)
 
 ---
 
