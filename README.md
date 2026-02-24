@@ -5,6 +5,52 @@
 - **주요정보 마스킹**: 모듈 내 @Mask 어노테이션을 활용해서 개인정보 또는 민감정보는 로그에 노출하지 않거나 마스킹되도록 지원
 - **분산 추적**: Micrometer Tracing(Brave) 기반으로 traceId/spanId를 MDC에 자동 주입. B3/W3C 헤더 전파 및 자체 UUID fallback 지원
 
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant MDCFilter    as MdcTraceFilter
+    participant Filter       as ContentCachingWrappingFilter
+    participant Aspect       as RequestMappingAspect (AOP)
+    participant Handler      as Controller
+    participant Interceptor  as StatusLoggingHandlerInterceptor
+    participant Logger       as STATUS_LOGGER
+
+    Client->>MDCFilter: HTTP Request
+    MDCFilter->>MDCFilter: traceId/spanId MDC 주입 (헤더 or UUID fallback)
+    MDCFilter->>MDCFilter: userId, deviceId, requestId MDC 주입
+    MDCFilter->>Filter: 다음 필터로 전달
+
+    Filter->>Filter: Request/Response body 캐싱 래핑
+
+    Filter->>Aspect: preHandle (AOP Around 시작)
+    Aspect->>Handler: 컨트롤러 메서드 호출
+    Handler-->>Aspect: 응답 객체 반환
+    Aspect->>Aspect: 요청·응답 직렬화
+    Note over Aspect: @Mask 필드 → MaskingSerializer 적용
+    Aspect->>Aspect: request attribute 에 로그 데이터 저장
+    Aspect-->>Filter: 응답 반환
+
+    Filter->>Interceptor: afterCompletion()
+    Interceptor->>Interceptor: @IgnoreStatusLogging 체크
+
+    alt 로깅 제외 (@IgnoreStatusLogging)
+        Interceptor-->>Filter: 로깅 스킵
+    else 에러 응답 (4xx / 5xx)
+        Interceptor->>Interceptor: contentAsByteArray Fallback
+        Interceptor->>Interceptor: JsonMaskUtils 재귀 마스킹
+        Interceptor->>Logger: StatusLogger.log()
+    else 정상 응답
+        Interceptor->>Interceptor: request attribute 에서 로그 데이터 수집
+        Interceptor->>Logger: StatusLogger.log()
+    end
+
+    Logger-->>Logger: JSON 직렬화 후 INFO 출력
+    Filter-->>MDCFilter: 응답 반환
+    MDCFilter->>MDCFilter: MDC 키 정리 (finally)
+    MDCFilter-->>Client: HTTP Response (원본 값 그대로)
+```
+
 ---
 
 ## 🚀 퀵 스타트
@@ -208,6 +254,34 @@ data class UserResponse(
 
 > **JSON 트리 마스킹**: 에러 응답처럼 이미 직렬화된 JSON 경로에서는 `@Mask` 어노테이션 대신 `MaskType.fieldNameIndex`에 등록된 **필드명을 기준으로 재귀 자동 마스킹**합니다.
 
+```mermaid
+stateDiagram-v2
+    [*] --> 요청수신
+
+    state "정상 응답 경로 (AOP)" as NormalPath {
+        [*] --> Mask어노테이션확인
+        Mask어노테이션확인 --> MaskingSerializer적용 : @Mask 선언된 필드
+        Mask어노테이션확인 --> 원본값유지 : @Mask 없는 필드
+        MaskingSerializer적용 --> [*]
+        원본값유지 --> [*]
+    }
+
+    state "에러 / Failover 경로 (Interceptor)" as ErrorPath {
+        [*] --> JsonMaskUtils순회
+        JsonMaskUtils순회 --> 필드명인덱스매칭
+        필드명인덱스매칭 --> 마스킹적용 : fieldNameIndex 존재
+        필드명인덱스매칭 --> 원본유지 : fieldNameIndex 없음
+        마스킹적용 --> [*]
+        원본유지 --> [*]
+    }
+
+    요청수신 --> NormalPath : AOP 응답 객체 캡처
+    요청수신 --> ErrorPath : 에러 응답 / failover JSON
+    NormalPath --> STATUS_LOGGER출력
+    ErrorPath --> STATUS_LOGGER출력
+    STATUS_LOGGER출력 --> [*]
+```
+
 ---
 
 ### 3. 분산 추적 (MDC Tracing)
@@ -250,6 +324,60 @@ management:
       probability: 0.1   # 10% 샘플링
 ```
 
+#### 서비스 간 traceId/spanId 전파 흐름
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant GW        as API Gateway
+    participant ServiceA  as Service A<br/>(common-logging)
+    participant ServiceB  as Service B<br/>(common-logging)
+    participant ServiceC  as Service C<br/>(common-logging)
+    participant LogStore  as 로그 수집 (ELK / Loki)
+
+    Client->>GW: HTTP Request<br/>(헤더 없음)
+    GW->>GW: traceparent 생성<br/>traceId=aaaa1111, spanId=(없음)
+    GW->>ServiceA: POST /order<br/>traceparent: 00-aaaa1111-span0001-01
+
+    Note over ServiceA: MDC 주입<br/>traceId=aaaa1111 spanId=span0001
+
+    ServiceA->>ServiceA: 주문 처리 로직
+    ServiceA-->>LogStore: STATUS 로그<br/>traceId=aaaa1111 / spanId=span0001
+
+    ServiceA->>ServiceB: GET /user/42<br/>traceparent: 00-aaaa1111-span0002-01
+    Note right of ServiceA: traceId 유지 ✔<br/>spanId 새로 발급 ✔
+
+    Note over ServiceB: MDC 주입<br/>traceId=aaaa1111 spanId=span0002
+
+    ServiceB->>ServiceB: 사용자 조회 로직
+    ServiceB->>ServiceC: GET /point/42<br/>traceparent: 00-aaaa1111-span0003-01
+    Note right of ServiceB: traceId 유지 ✔<br/>spanId 새로 발급 ✔
+
+    Note over ServiceC: MDC 주입<br/>traceId=aaaa1111 spanId=span0003
+
+    ServiceC->>ServiceC: 포인트 조회 로직
+    ServiceC-->>LogStore: STATUS 로그<br/>traceId=aaaa1111 / spanId=span0003
+    ServiceC-->>ServiceB: 200 OK (포인트 응답)
+
+    ServiceB-->>LogStore: STATUS 로그<br/>traceId=aaaa1111 / spanId=span0002
+    ServiceB-->>ServiceA: 200 OK (사용자+포인트)
+
+    ServiceA-->>LogStore: STATUS 로그<br/>traceId=aaaa1111 / spanId=span0001
+    ServiceA-->>GW: 200 OK
+    GW-->>Client: HTTP Response
+
+    Note over LogStore: traceId=aaaa1111 하나로<br/>A→B→C 전 구간 로그 조회 가능
+```
+
+| 항목 | 동작 |
+|---|---|
+| **traceId** | 최초 생성 후 모든 서비스에서 **동일하게 유지** |
+| **spanId** | 서비스 경계를 넘을 때마다 **새로 발급** — 각 구간을 식별 |
+| **전파 헤더** | `traceparent: 00-{traceId}-{spanId}-01` (W3C 표준) |
+| **MDC 주입** | 각 서비스의 `MdcTraceFilter`가 헤더에서 읽어 MDC에 저장 |
+| **로그 조회** | 로그 수집 시스템에서 `traceId`로 필터링 → 전 구간 한눈에 확인 |
+
 ---
 
 ### 4. 로그 메시지 빌더 (StatusLogMessageBuilder)
@@ -273,6 +401,26 @@ management:
 
 `HttpServletRequest` / `HttpServletResponse`를 래핑해 요청·응답 본문을 **여러 번 읽을 수 있도록 캐싱**합니다.
 `ignore-path-patterns` 설정으로 헬스체크 등 불필요한 경로를 제외할 수 있습니다.
+
+```mermaid
+flowchart TD
+    A([HTTP 요청]) --> B["ContentCachingWrappingFilter\n요청 본문 캐싱"]
+    B --> C{"AOP 파라미터\n직렬화 성공?"}
+
+    C -- "성공 (Normal Path)" --> D["RequestMappingAspect\n파라미터 → ObjectNode 변환"]
+    D --> E["@Mask 필드\nMaskingSerializer 적용"]
+    E --> F["request attribute 저장\n(KEY_REQUEST_MAPPING_ARGUMENTS)"]
+
+    C -- "실패 (Failover Path)" --> G["StatusLoggingHandlerInterceptor\ncontentAsByteArray Fallback"]
+    G --> H["JSON 파싱\n(LogObjectMapper)"]
+    H --> I["JsonMaskUtils.mask()\n필드명 기반 재귀 마스킹"]
+    I --> J["request attribute 저장\n(KEY_REQUEST_MAPPING_ARGUMENTS_STRING)"]
+
+    F --> K["StatusLoggingHandlerInterceptor\nafterCompletion 수집"]
+    J --> K
+    K --> L["StatusLogger.log()\nJSON INFO 출력"]
+    L --> M([STATUS_LOGGER 기록 완료])
+```
 
 ---
 
@@ -321,110 +469,3 @@ management:
 | `clientIp` | 클라이언트 IP | 마스킹 가능 (`MaskType.IP`) |
 | `node` / `pod` | K8s 인프라 정보 | 환경 변수 기반 |
 
----
-
-## 📐 아키텍처 다이어그램
-
-### 1. HTTP 요청 처리 및 로깅 흐름
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Client
-    participant MDCFilter    as MdcTraceFilter
-    participant Filter       as ContentCachingWrappingFilter
-    participant Aspect       as RequestMappingAspect (AOP)
-    participant Handler      as Controller
-    participant Interceptor  as StatusLoggingHandlerInterceptor
-    participant Logger       as STATUS_LOGGER
-
-    Client->>MDCFilter: HTTP Request
-    MDCFilter->>MDCFilter: traceId/spanId MDC 주입 (헤더 or UUID fallback)
-    MDCFilter->>MDCFilter: userId, deviceId, requestId MDC 주입
-    MDCFilter->>Filter: 다음 필터로 전달
-
-    Filter->>Filter: Request/Response body 캐싱 래핑
-
-    Filter->>Aspect: preHandle (AOP Around 시작)
-    Aspect->>Handler: 컨트롤러 메서드 호출
-    Handler-->>Aspect: 응답 객체 반환
-    Aspect->>Aspect: 요청·응답 직렬화
-    Note over Aspect: @Mask 필드 → MaskingSerializer 적용
-    Aspect->>Aspect: request attribute 에 로그 데이터 저장
-    Aspect-->>Filter: 응답 반환
-
-    Filter->>Interceptor: afterCompletion()
-    Interceptor->>Interceptor: @IgnoreStatusLogging 체크
-
-    alt 로깅 제외 (@IgnoreStatusLogging)
-        Interceptor-->>Filter: 로깅 스킵
-    else 에러 응답 (4xx / 5xx)
-        Interceptor->>Interceptor: contentAsByteArray Fallback
-        Interceptor->>Interceptor: JsonMaskUtils 재귀 마스킹
-        Interceptor->>Logger: StatusLogger.log()
-    else 정상 응답
-        Interceptor->>Interceptor: request attribute 에서 로그 데이터 수집
-        Interceptor->>Logger: StatusLogger.log()
-    end
-
-    Logger-->>Logger: JSON 직렬화 후 INFO 출력
-    Filter-->>MDCFilter: 응답 반환
-    MDCFilter->>MDCFilter: MDC 키 정리 (finally)
-    MDCFilter-->>Client: HTTP Response (원본 값 그대로)
-```
-
----
-
-### 2. @Mask 마스킹 처리 분기
-
-```mermaid
-stateDiagram-v2
-    [*] --> 요청수신
-
-    state "정상 응답 경로 (AOP)" as NormalPath {
-        [*] --> Mask어노테이션확인
-        Mask어노테이션확인 --> MaskingSerializer적용 : @Mask 선언된 필드
-        Mask어노테이션확인 --> 원본값유지 : @Mask 없는 필드
-        MaskingSerializer적용 --> [*]
-        원본값유지 --> [*]
-    }
-
-    state "에러 / Failover 경로 (Interceptor)" as ErrorPath {
-        [*] --> JsonMaskUtils순회
-        JsonMaskUtils순회 --> 필드명인덱스매칭
-        필드명인덱스매칭 --> 마스킹적용 : fieldNameIndex 존재
-        필드명인덱스매칭 --> 원본유지 : fieldNameIndex 없음
-        마스킹적용 --> [*]
-        원본유지 --> [*]
-    }
-
-    요청수신 --> NormalPath : AOP 응답 객체 캡처
-    요청수신 --> ErrorPath : 에러 응답 / failover JSON
-    NormalPath --> STATUS_LOGGER출력
-    ErrorPath --> STATUS_LOGGER출력
-    STATUS_LOGGER출력 --> [*]
-```
-
----
-
-### 3. RequestBody 캡처 경로 (정상 vs Failover)
-
-```mermaid
-flowchart TD
-    A([HTTP 요청]) --> B["ContentCachingWrappingFilter\n요청 본문 캐싱"]
-    B --> C{"AOP 파라미터\n직렬화 성공?"}
-
-    C -- "성공 (Normal Path)" --> D["RequestMappingAspect\n파라미터 → ObjectNode 변환"]
-    D --> E["@Mask 필드\nMaskingSerializer 적용"]
-    E --> F["request attribute 저장\n(KEY_REQUEST_MAPPING_ARGUMENTS)"]
-
-    C -- "실패 (Failover Path)" --> G["StatusLoggingHandlerInterceptor\ncontentAsByteArray Fallback"]
-    G --> H["JSON 파싱\n(LogObjectMapper)"]
-    H --> I["JsonMaskUtils.mask()\n필드명 기반 재귀 마스킹"]
-    I --> J["request attribute 저장\n(KEY_REQUEST_MAPPING_ARGUMENTS_STRING)"]
-
-    F --> K["StatusLoggingHandlerInterceptor\nafterCompletion 수집"]
-    J --> K
-    K --> L["StatusLogger.log()\nJSON INFO 출력"]
-    L --> M([STATUS_LOGGER 기록 완료])
-```
