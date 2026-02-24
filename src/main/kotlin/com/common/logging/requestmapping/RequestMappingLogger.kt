@@ -14,7 +14,6 @@ import jakarta.servlet.ServletRequest
 import jakarta.servlet.ServletResponse
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpSession
-import org.apache.commons.lang3.StringUtils
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.Signature
 import org.aspectj.lang.reflect.MethodSignature
@@ -179,7 +178,7 @@ class RequestMappingLogger(
     private fun toJsonOrSecret(
         result: Any?,
         joinPoint: ProceedingJoinPoint
-    ): String = toJsonString(result ?: StringUtils.EMPTY)
+    ): String = toJsonString(result ?: "")
 
     private fun convertToObjectNode(responseObject: Any?): ObjectNode {
         var jsonNode =

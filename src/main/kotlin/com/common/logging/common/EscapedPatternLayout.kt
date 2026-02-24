@@ -5,8 +5,6 @@ import ch.qos.logback.classic.pattern.MessageConverter
 import ch.qos.logback.classic.pattern.RootCauseFirstThrowableProxyConverter
 import ch.qos.logback.classic.pattern.ThrowableProxyConverter
 import ch.qos.logback.classic.spi.ILoggingEvent
-import org.apache.commons.lang3.StringEscapeUtils
-import org.apache.commons.lang3.StringUtils
 
 class EscapedPatternLayout : PatternLayout() {
     private var defaultConverterMap: MutableMap<String, String> = HashMap()
@@ -45,16 +43,29 @@ class EscapedPatternLayout : PatternLayout() {
     }
 
     companion object {
-        fun jsonSafeReplace(origin: String?): String = StringEscapeUtils.escapeJson(origin)
-
-        /**
-         * sonSafeReplace 에서 "/" 문자를 치환하는 부분을 제거하기 위해서 정의
-         */
-        fun customJsonSafeReplace(origin: String?): String {
-            var message = StringUtils.replace(origin, "\t", "\\t")
-            message = StringUtils.replace(message, "\n", "\\n")
-            message = StringUtils.replace(message, "\r", "\\r")
-            return StringUtils.replace(message, "\"", "\\\"")
+        fun jsonSafeReplace(origin: String?): String {
+            if (origin.isNullOrEmpty()) return ""
+            return buildString(origin.length + 16) {
+                for (ch in origin) {
+                    when (ch) {
+                        '"'  -> append("\\\"")
+                        '\\' -> append("\\\\")
+                        '\n' -> append("\\n")
+                        '\r' -> append("\\r")
+                        '\t' -> append("\\t")
+                        '\b' -> append("\\b")
+                        '\u000C' -> append("\\f")
+                        else -> if (ch < ' ') append("\\u%04x".format(ch.code)) else append(ch)
+                    }
+                }
+            }
         }
+
+        fun customJsonSafeReplace(origin: String?): String =
+            (origin ?: "")
+                .replace("\t", "\\t")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\"", "\\\"")
     }
 }

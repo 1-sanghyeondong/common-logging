@@ -7,7 +7,6 @@ plugins {
 
     kotlin("jvm") version kotlinVersion
     kotlin("plugin.spring") version kotlinVersion
-    kotlin("plugin.jpa") version kotlinVersion
     kotlin("kapt") version kotlinVersion
 }
 
@@ -42,20 +41,16 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-aop")
-    implementation("org.springframework.boot:spring-boot-starter-validation")
 
-    implementation("org.springframework.cloud:spring-cloud-starter-config")
     implementation("io.micrometer:micrometer-tracing-bridge-brave")
-    implementation("io.zipkin.reporter2:zipkin-reporter-brave")
 
-    implementation("org.apache.commons:commons-lang3")
-    implementation("org.apache.commons:commons-pool2")
     implementation("commons-io:commons-io:2.11.0")
     implementation("commons-codec:commons-codec:1.16.0")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("net.logstash.logback:logstash-logback-encoder:7.4")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-validation")
 }
 
 kapt {
