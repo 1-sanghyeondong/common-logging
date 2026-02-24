@@ -7,6 +7,7 @@ import com.common.logging.status.builder.StatusLogMessageBuilder
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
+import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.Ordered
@@ -55,6 +56,14 @@ class StatusLoggingConfiguration : WebMvcConfigurer {
     @Bean
     fun contentCachingWrappingFilter(): ContentCachingWrappingFilter =
         ContentCachingWrappingFilter(enableContentCaching = enableContentCaching, ignorePathPatterns = contentCachingIgnorePathPatterns.map { PathPatternParser.defaultInstance.parse(it) })
+
+    @Bean
+    fun mdcTraceFilterRegistration(): FilterRegistrationBean<MdcTraceFilter> {
+        val registration = FilterRegistrationBean(MdcTraceFilter())
+        registration.order = Ordered.HIGHEST_PRECEDENCE
+        registration.addUrlPatterns("/*")
+        return registration
+    }
 
     override fun addInterceptors(registry: InterceptorRegistry) {
         // 직접 멤버 변수를 참조하는 대신 context에서 빈을 찾아 넣어주는 구조

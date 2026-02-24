@@ -53,7 +53,6 @@ internal data class RequestLog(
             )
         }
 
-        // 파일을 로그에 남길 필요는 없다
         private fun isMultiPartFileType(argument: Any?): Boolean =
             when {
                 argument is MultipartFile -> true
@@ -61,7 +60,6 @@ internal data class RequestLog(
                 else -> false
             }
 
-        // 파일정보를 file 이름 정보로 전환한다.
         private fun getMultipartFileArgument(argument: Any?): String =
             when {
                 argument is MultipartFile -> {

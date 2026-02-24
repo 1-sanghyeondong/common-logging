@@ -179,7 +179,7 @@ class StatusLoggingHandlerInterceptor(
             if (request.contentType == APPLICATION_JSON_VALUE) {
                 try {
                     val root: JsonNode = LogObjectMapper.mapper.readTree(responseString)
-                    JsonMaskUtils.mask(root)  // 에러 응답 JSON 트리 전체 마스킹
+                    JsonMaskUtils.mask(root)
                     return root.toPrettyString()
                 } catch (ex: Exception) {
                     logger.error("response logging parse error | request: {}, error_message: {}", responseString, ex.message, ex)

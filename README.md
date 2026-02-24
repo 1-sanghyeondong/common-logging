@@ -1,9 +1,9 @@
 #### Spring Boot 3.2+ 기반 공통 로깅 라이브러리 (common-logging)
 
-- **Spring Boot 3.x 호환**: Jakarta EE 기반의 최신 Spring Boot 3.2.5 환경을 완벽하게 지원
-- **표준화된 로깅**: HTTP 요청/응답 상태, 페이로드(Body), 클라우드 환경 정보(Pod, Node 등)를 자동으로 수집하여 표준화된 로그를 생성
+- **표준화된 로깅 공통화**: HTTP 요청/응답 상태, 페이로드(Body), 클라우드 환경 정보(Pod, Node 등)를 자동으로 수집하여 표준화된 로그를 생성
 - **안전한 아키텍처**: 최신 Spring Boot의 엄격한 빈 생성 규칙을 준수하여 순환 참조 문제를 해결하고 조건부 로딩을 통해 필요한 환경에서만 활성화
 - **주요정보 마스킹**: 모듈 내 @Mask 어노테이션을 활용해서 개인정보 또는 민감정보는 로그에 노출하지 않거나 마스킹되도록 지원
+- **분산 추적**: 스프링 클라우드를 위한 분산 트레이싱에 대한 내용을 자동 제공 (MDC Tracing, traceId/spanId)
 
 ---
 
@@ -13,30 +13,15 @@
 
 ```kotlin
 dependencies {
-    implementation("com.common:common-logging:0.0.1")
+    implementation("com.common:common-logging:1.0.0")
 }
 ```
 
-### 2. application.yml 설정
-
-```yaml
-app:
-  id: my-service-name           # [필수] 서비스 식별자 (로그의 service 필드)
-
-status-logger:
-  response-logging:
-    enabled: false              # [선택] responseBody 로깅 활성화 (기본: false)
-  content-caching:
-    enabled: true               # [선택] ContentCachingWrappingFilter 활성화 (기본: true)
-    ignore-path-patterns:       # [선택] 캐싱·로깅 제외 경로
-      - "/actuator/**"
-      - "/health"
-```
-
-### 3. 라이브러리 활성화
+### 2. 라이브러리 활성화
 
 ```kotlin
-@EnableLogging // 이 어노테이션 하나로 모든 로깅 기능 활성화
+@EnableLogging // 모든 로깅 기능 활성화
+@EnableMDCTraceLogging // 분산 추적 + Brave 샘플링 활성화
 @SpringBootApplication
 class MyServiceApplication
 
@@ -54,17 +39,18 @@ fun main(args: Array<String>) {
 | 어노테이션 | 적용 위치 | 설명 |
 |---|---|---|
 | `@EnableLogging` | 클래스 | 라이브러리 전체 빈 로드 진입점 |
+| `@EnableMDCTraceLogging` | 클래스 | 라이브러리 전체 빈 로드 진입점 |
 | `@IgnoreStatusLogging` | 메서드 | 해당 엔드포인트를 STATUS_LOGGER 에서 제외 |
 | `@StatusLoggerOption(fullBody=true)` | 메서드 | responseBody 전체를 로그에 기록 (기본은 truncated) |
 | `@Mask(type = MaskType.PHONE)` | 필드 | 직렬화 시 해당 필드 값을 마스킹 |
 
 ```kotlin
 @GetMapping("/health")
-@IgnoreStatusLogging                    // 헬스체크 로그 제외
+@IgnoreStatusLogging // 헬스체크 로그 제외
 fun health(): String = "ok"
 
 @GetMapping("/admin/report")
-@StatusLoggerOption(fullBody = true)    // 전체 응답 body 로그
+@StatusLoggerOption(fullBody = true) // 전체 응답 body 로그
 fun report(): ReportResponse = ...
 ```
 
@@ -131,6 +117,8 @@ data class UserResponse(
 ```json
 {
   "@timestamp": "2026-01-29T12:15:22.123+09:00",
+  "traceId": "91f10b1e-b1a1-4216-b9fa-428bb119d11f",
+  "spanId": "193269809b80",
   "service": "my-service",
   "phase": "production",
   "method": "GET",
@@ -150,23 +138,25 @@ data class UserResponse(
 
 ### 주요 필드 설명
 
-| 필드 | 설명 | 비고 |
-|---|---|---|
-| `@timestamp` | 로그 발생 시간 | ISO 8601 |
-| `service` | 서비스 식별자 | `app.id` 설정값 |
-| `phase` | 실행 환경 | `spring.profiles.active` |
-| `method` | HTTP Method | GET, POST, PUT 등 |
-| `path` | 실제 요청 URI | Query String 포함 |
-| `ipath` | HandlerMapping 패턴 경로 | `/api/v1/users/{id}` 형태 |
-| `statusCode` | HTTP 상태 코드 | 200, 400, 500 등 |
-| `execTimemillis` | 처리 시간 | 밀리초 단위 |
-| `message` | 요약 텍스트 | req/res/from 멀티라인 |
-| `requestBody` | 요청 본문 | AOP 캡처 or Failover 경로 |
-| `responseBody` | 응답 본문 | `@Mask` 필드 자동 마스킹 |
-| `responseMsg` | 에러 메시지 | 4xx/5xx 응답 시 포함 |
-| `clientIp` | 클라이언트 IP | 마스킹 가능 (`MaskType.IP`) |
-| `node` / `pod` | K8s 인프라 정보 | 환경 변수 기반 |
-| `traceId` / `spanId` | 분산 추적 ID | Micrometer Tracing 연동 |
+| 필드                  | 설명                   | 비고                      |
+|---------------------|----------------------|-------------------------|
+| `@timestamp`        | 로그 발생 시간             | ISO 8601                |
+| `traceId`           | 분산추적 ID              | 자동 발급                 |
+| `spanId`            | 분산추적 ID              | 자동 발급                   |
+| `service`           | 서비스 식별자              | `app.id` 설정값            |
+| `phase`             | 실행 환경                | `spring.profiles.active` |
+| `method`            | HTTP Method          | GET, POST, PUT 등        |
+| `path`              | 실제 요청 URI            | Query String 포함         |
+| `ipath`             | HandlerMapping 패턴 경로 | `/api/v1/users/{id}` 형태 |
+| `statusCode`        | HTTP 상태 코드           | 200, 400, 500 등         |
+| `execTimemillis`    | 처리 시간                | 밀리초 단위                  |
+| `message`           | 요약 텍스트               | req/res/from 멀티라인       |
+| `requestBody`       | 요청 본문                | AOP 캡처 or Failover 경로   |
+| `responseBody`      | 응답 본문                | `@Mask` 필드 자동 마스킹       |
+| `responseMsg`       | 에러 메시지               | 4xx/5xx 응답 시 포함         |
+| `clientIp`          | 클라이언트 IP             | 마스킹 가능 (`MaskType.IP`)  |
+| `node` / `pod`      | K8s 인프라 정보           | 환경 변수 기반                |
+| `traceId` / `spanId` | 분산 추적 ID             | Micrometer Tracing 연동   |
 
 ---
 

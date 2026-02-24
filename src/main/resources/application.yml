@@ -7,11 +7,6 @@ app:
 spring:
   application:
     name: common-logging
-  cloud:
-    config:
-      enabled: false
-      import-check:
-        enabled: false
 
   profiles:
     active: local
@@ -21,4 +16,3 @@ spring:
 
   main:
     allow-bean-definition-overriding: true
-

@@ -1,5 +1,6 @@
 package com.common.logging.annotations
 
+import com.common.logging.common.domain.MaskType
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested

@@ -2,7 +2,7 @@ package com.common.logging
 
 import com.common.logging.annotations.IgnoreStatusLogging
 import com.common.logging.annotations.Mask
-import com.common.logging.annotations.MaskType
+import com.common.logging.common.domain.MaskType
 import com.common.logging.annotations.StatusLoggerOption
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -27,10 +27,6 @@ import java.time.LocalDateTime
 class MockApiController {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
-    // ──────────────────────────────────────────────────────────────
-    // 1. 기본 GET – STATUS_LOGGER 로그 확인
-    // ──────────────────────────────────────────────────────────────
-
     @GetMapping("/hello")
     fun hello(): ResponseEntity<Map<String, Any>> {
         logger.debug("hello endpoint called")
@@ -40,10 +36,6 @@ class MockApiController {
         )
         return ResponseEntity.ok(body)
     }
-
-    // ──────────────────────────────────────────────────────────────
-    // 2. fullBody=true – responseBody 전체 노출 확인
-    // ──────────────────────────────────────────────────────────────
 
     @GetMapping("/hello/full-body")
     @StatusLoggerOption(fullBody = true)
@@ -56,19 +48,11 @@ class MockApiController {
         return ResponseEntity.ok(body)
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // 3. @IgnoreStatusLogging – STATUS_LOGGER 에 기록되지 않음
-    // ──────────────────────────────────────────────────────────────
-
     @GetMapping("/hello/no-log")
     @IgnoreStatusLogging
     fun helloNoLog(): ResponseEntity<Map<String, String>> {
         return ResponseEntity.ok(mapOf("message" to "This endpoint is excluded from status logging"))
     }
-
-    // ──────────────────────────────────────────────────────────────
-    // 4. Path variable – ipath / path 필드 차이 확인
-    // ──────────────────────────────────────────────────────────────
 
     @GetMapping("/users/{id}")
     fun getUser(@PathVariable id: Long): ResponseEntity<UserResponse> {
@@ -80,10 +64,6 @@ class MockApiController {
         )
         return ResponseEntity.ok(user)
     }
-
-    // ──────────────────────────────────────────────────────────────
-    // 5. Query param – path에 query string 포함 확인
-    // ──────────────────────────────────────────────────────────────
 
     @GetMapping("/search")
     fun search(
@@ -101,10 +81,6 @@ class MockApiController {
         return ResponseEntity.ok(result)
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // 6. POST – requestBody 로그 확인
-    // ──────────────────────────────────────────────────────────────
-
     @PostMapping("/users")
     @ResponseStatus(HttpStatus.CREATED)
     fun createUser(@Valid @RequestBody request: CreateUserRequest): ResponseEntity<UserResponse> {
@@ -117,10 +93,6 @@ class MockApiController {
         )
         return ResponseEntity.status(HttpStatus.CREATED).body(created)
     }
-
-    // ──────────────────────────────────────────────────────────────
-    // 7. PUT – path variable + body 업데이트
-    // ──────────────────────────────────────────────────────────────
 
     @PutMapping("/users/{id}")
     fun updateUser(
@@ -136,19 +108,11 @@ class MockApiController {
         return ResponseEntity.ok(updated)
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // 8. DELETE – 204 No Content
-    // ──────────────────────────────────────────────────────────────
-
     @DeleteMapping("/users/{id}")
     fun deleteUser(@PathVariable id: Long): ResponseEntity<Void> {
         logger.info("Deleting user id={}", id)
         return ResponseEntity.noContent().build()
     }
-
-    // ──────────────────────────────────────────────────────────────
-    // 9. Slow endpoint – execTimemillis 확인
-    // ──────────────────────────────────────────────────────────────
 
     @GetMapping("/slow")
     fun slow(@RequestParam(defaultValue = "500") delayMs: Long): ResponseEntity<Map<String, Any>> {
@@ -162,10 +126,6 @@ class MockApiController {
         )
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // 10. 4xx 에러 – statusCode 로그 확인
-    // ──────────────────────────────────────────────────────────────
-
     @GetMapping("/error/4xx")
     fun error4xx(): ResponseEntity<ErrorResponse> {
         return ResponseEntity
@@ -173,27 +133,15 @@ class MockApiController {
             .body(ErrorResponse(code = "INVALID_REQUEST", message = "This is a simulated 400 error"))
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // 11. 5xx 에러 – exception 로그 확인
-    // ──────────────────────────────────────────────────────────────
-
     @GetMapping("/error/5xx")
     fun error5xx(): ResponseEntity<ErrorResponse> {
         throw RuntimeException("Simulated internal server error for logging test")
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // 12. Echo – 큰 body의 truncation 확인
-    // ──────────────────────────────────────────────────────────────
-
     @PostMapping("/echo")
     fun echo(@RequestBody body: Map<String, Any>): ResponseEntity<Map<String, Any>> {
         return ResponseEntity.ok(body)
     }
-
-    // ──────────────────────────────────────────────────────────────
-    // 13. @Mask — 개인정보 마스킹 확인
-    // ──────────────────────────────────────────────────────────────
 
     @GetMapping("/personal-info")
     fun getPersonalInfo(): ResponseEntity<PersonalInfoResponse> {
@@ -209,11 +157,6 @@ class MockApiController {
         return ResponseEntity.ok(response)
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // DTOs
-    // ──────────────────────────────────────────────────────────────
-
-    /** 로그에는 마스킹된 값이 기록된다. API 응답은 원본 값 그대로 반환한다. */
     data class PersonalInfoResponse(
         val userId: Long,
         @param:Mask(type = MaskType.NAME) val name: String,               // 홍길동 → 홍**

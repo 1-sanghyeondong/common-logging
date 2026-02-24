@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <springProperty scope="context" name="LOGBACK_STDOUT_PATTERN" source="logging.patterns.stdout"
-                    defaultValue="%date{'yyyy-MM-dd HH:mm:ss,SSS', Asia/Seoul} %-5level %thread %r \(%logger{15}\) [%mdc{traceId:--}:%mdc{user-id:--}] %msg%n"/>
+    <!--
+        Logback 콘솔 패턴
+          traceId. spanId (Micrometer Tracing)
+          user-id (X-User-Id 요청 헤더)
+          device-id (X-Device-Id 요청 헤더)
+          requestId (X-Request-Id 헤더 or UUID 자동 생성)
+    -->
+    <springProperty scope="context" name="LOGBACK_STDOUT_PATTERN" source="logging.patterns.stdout" defaultValue="%date{'yyyy-MM-dd HH:mm:ss,SSS', Asia/Seoul} %-5level %thread %r \(%logger{15}\) [%mdc{traceId:--}:%mdc{spanId:--}:%mdc{user-id:--}] [%mdc{requestId:-}] %msg%n"/>
 
     <springProperty scope="context" name="LOG_SLACK_DEFAULT_EMOJI" source="slack.log.emoji" defaultValue=":bug:"/>
 
